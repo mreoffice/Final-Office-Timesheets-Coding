@@ -601,12 +601,12 @@
                 <h3>Employee Selection</h3>
                 <div class="timesheet-tabs">
                     <button class="timesheet-tab active" data-sheet="1" onclick="switchTimesheet(1)">Anastosia</button>
-                    <button class="timesheet-tab" data-sheet="2" onclick="switchTimesheet(2)">Ben</button>
-                    <button class="timesheet-tab" data-sheet="3" onclick="switchTimesheet(3)">Brad</button>
-                    <button class="timesheet-tab" data-sheet="4" onclick="switchTimesheet(4)">Bryce</button>
+                    <button class="timesheet-tab" data-sheet="2" onclick="switchTimesheet(2)">Rachael</button>
+                    <button class="timesheet-tab" data-sheet="3" onclick="switchTimesheet(3)">Logan</button>
+                    <button class="timesheet-tab" data-sheet="4" onclick="switchTimesheet(4)">Brad</button>
                     <button class="timesheet-tab" data-sheet="5" onclick="switchTimesheet(5)">Cherish</button>
-                    <button class="timesheet-tab" data-sheet="6" onclick="switchTimesheet(6)">Logan</button>
-                    <button class="timesheet-tab" data-sheet="7" onclick="switchTimesheet(7)">Rachael</button>
+                    <button class="timesheet-tab" data-sheet="6" onclick="switchTimesheet(6)">Bryce</button>
+                    <button class="timesheet-tab" data-sheet="7" onclick="switchTimesheet(7)">Ben</button>
                 </div>
                 <p class="current-timesheet-info">Currently viewing: <span id="currentTimesheetName">Anastosia</span></p>
             </div>
@@ -691,16 +691,15 @@
             allTimesheets: {},
             currentStartDate: null,
             isInitialized: false,
-            employeeUniqueIds: {},
-            debugMode: true // Enable debug mode to see initialization steps
+            employeeUniqueIds: {}
         };
         
         const employeeNames = {
-            1: 'Anastosia', 2: 'Ben', 3: 'Brad', 4: 'Bryce',
-            5: 'Cherish', 6: 'Logan', 7: 'Rachael'
+            1: 'Anastosia', 2: 'Rachael', 3: 'Logan', 4: 'Brad',
+            5: 'Cherish', 6: 'Bryce', 7: 'Ben'
         };
 
-        // Enhanced error handling and user feedback
+        // Utility functions for error handling and user feedback
         function showError(message) {
             const errorDiv = document.getElementById('errorMessage');
             if (errorDiv) {
@@ -742,7 +741,7 @@
         // Safe element access with error handling
         function safeGetElement(id) {
             const element = document.getElementById(id);
-            if (!element && appState.debugMode) {
+            if (!element) {
                 console.warn(`Element with id '${id}' not found`);
             }
             return element;
@@ -762,54 +761,18 @@
             return false;
         }
 
-        // Safe storage functions that handle file:// protocol limitations
-        function safeGetFromStorage(key, defaultValue = null) {
-            try {
-                // Try memory storage first
-                if (window.timesheetStorage && window.timesheetStorage[key]) {
-                    return window.timesheetStorage[key];
-                }
-                
-                // Try sessionStorage if available
-                if (typeof Storage !== 'undefined' && window.location.protocol !== 'file:') {
-                    const stored = sessionStorage.getItem(key);
-                    return stored ? JSON.parse(stored) : defaultValue;
-                }
-                
-                return defaultValue;
-            } catch (error) {
-                if (appState.debugMode) {
-                    console.warn('Storage read failed:', error.message);
-                }
-                return defaultValue;
-            }
-        }
-
-        function safeSetToStorage(key, value) {
-            try {
-                // Always use memory storage as primary
-                window.timesheetStorage = window.timesheetStorage || {};
-                window.timesheetStorage[key] = value;
-                
-                // Try sessionStorage as backup if not file:// protocol
-                if (typeof Storage !== 'undefined' && window.location.protocol !== 'file:') {
-                    sessionStorage.setItem(key, JSON.stringify(value));
-                }
-                return true;
-            } catch (error) {
-                if (appState.debugMode) {
-                    console.warn('Storage write failed:', error.message);
-                }
-                return false;
-            }
-        }
-
-        // Enhanced unique ID generation
+        // Enhanced unique ID generation with collision detection
         function generateUniqueId(employeeName = '') {
             const sanitizedName = employeeName.toLowerCase().replace(/[^a-z]/g, '');
-            const timestamp = Date.now();
-            const random = Math.random().toString(36).substr(2, 9);
-            return `${sanitizedName}_${random}_${timestamp}`;
+            let id;
+            let attempts = 0;
+            
+            do {
+                id = `${sanitizedName}_${Math.random().toString(36).substr(2, 9)}_${Date.now() + attempts}`;
+                attempts++;
+            } while (Object.values(appState.employeeUniqueIds).includes(id) && attempts < 10);
+            
+            return id;
         }
 
         function findEmployeeByUniqueId(id) {
@@ -821,13 +784,9 @@
             return null;
         }
 
-        // Initialize all timesheets with proper error handling
+        // Enhanced initialization with comprehensive error handling
         function initializeAllTimesheets() {
             try {
-                if (appState.debugMode) {
-                    console.log('Initializing all timesheets...');
-                }
-                
                 for (let i = 1; i <= 7; i++) {
                     if (!appState.employeeUniqueIds[i]) {
                         appState.employeeUniqueIds[i] = generateUniqueId(employeeNames[i]);
@@ -846,12 +805,7 @@
                     }
                 }
                 
-                // Set current timesheet data reference
                 appState.timesheetData = appState.allTimesheets[appState.currentTimesheetNumber].data;
-                
-                if (appState.debugMode) {
-                    console.log('All timesheets initialized successfully');
-                }
                 return true;
             } catch (error) {
                 showError('Failed to initialize timesheets: ' + error.message);
@@ -859,7 +813,49 @@
             }
         }
 
-        // Enhanced date management
+        // Enhanced employee switching with proper state management
+        function switchTimesheet(sheetNumber) {
+            if (!appState.isInitialized) {
+                showError('Application not fully initialized. Please wait and try again.');
+                return;
+            }
+
+            if (sheetNumber < 1 || sheetNumber > 7) {
+                showError('Invalid employee number. Please select a valid employee.');
+                return;
+            }
+            
+            try {
+                showLoading(true);
+                disableButtons(true);
+                
+                // Save current data before switching
+                saveCurrentTimesheetData();
+                
+                // Ensure employeeUniqueIds is initialized
+                if (!appState.employeeUniqueIds[sheetNumber]) {
+                    appState.employeeUniqueIds[sheetNumber] = generateUniqueId(employeeNames[sheetNumber]);
+                }
+                
+                const employeeId = appState.employeeUniqueIds[sheetNumber];
+                const baseUrl = window.location.href.split('?')[0];
+                const newUrl = `${baseUrl}?id=${employeeId}`;
+                
+                console.log(`Switching to employee ${sheetNumber} (${employeeNames[sheetNumber]})`);
+                
+                // Use a small delay to ensure UI feedback is visible
+                setTimeout(() => {
+                    window.location.href = newUrl;
+                }, 100);
+                
+            } catch (error) {
+                showError('Error switching employee: ' + error.message);
+                showLoading(false);
+                disableButtons(false);
+            }
+        }
+
+        // Enhanced date management with validation
         function setCurrentWeek() {
             try {
                 const today = new Date();
@@ -869,7 +865,7 @@
                 appState.currentStartDate = startOfWeek;
                 
                 if (!safeSetValue('startDate', startOfWeek.toISOString().split('T')[0])) {
-                    console.warn('Could not set start date input');
+                    throw new Error('Could not set start date input');
                 }
                 
                 if (appState.allTimesheets[appState.currentTimesheetNumber]) {
@@ -892,7 +888,7 @@
                 appState.currentStartDate = nextWeek;
                 
                 if (!safeSetValue('startDate', nextWeek.toISOString().split('T')[0])) {
-                    console.warn('Could not set start date input');
+                    throw new Error('Could not set start date input');
                 }
                 
                 if (appState.allTimesheets[appState.currentTimesheetNumber]) {
@@ -934,51 +930,391 @@
             }
         }
 
-        // Employee switching with proper sequencing
-        function switchTimesheet(sheetNumber) {
-            if (!appState.isInitialized) {
-                showError('Application not fully initialized. Please wait and try again.');
-                return;
-            }
-
-            if (sheetNumber < 1 || sheetNumber > 7) {
-                showError('Invalid employee number. Please select a valid employee.');
-                return;
-            }
-            
+        // Enhanced hours selector with better error handling
+        function toggleHoursSelector(button, date, type) {
             try {
-                showLoading(true);
-                disableButtons(true);
+                if (!button || !date || !type) {
+                    throw new Error('Invalid parameters for hours selector');
+                }
                 
-                // Save current data before switching
+                const selector = safeGetElement(`${type}-${date}`);
+                if (!selector) {
+                    throw new Error(`Hours selector not found: ${type}-${date}`);
+                }
+                
+                const isActive = selector.classList.contains('active');
+                
+                // Close all other selectors
+                document.querySelectorAll('.hours-selector.active').forEach(sel => {
+                    if (sel !== selector) {
+                        sel.classList.remove('active');
+                    }
+                });
+                
+                // Toggle current selector
+                if (isActive) {
+                    selector.classList.remove('active');
+                } else {
+                    selector.classList.add('active');
+                }
+            } catch (error) {
+                showError('Error toggling hours selector: ' + error.message);
+            }
+        }
+
+        // Enhanced data saving with validation
+        function saveData() {
+            try {
+                disableButtons(true);
+                showLoading(true);
+                
+                if (!appState.isInitialized) {
+                    throw new Error('Application not properly initialized');
+                }
+                
                 saveCurrentTimesheetData();
                 
-                // Ensure employeeUniqueIds is initialized
-                if (!appState.employeeUniqueIds[sheetNumber]) {
-                    appState.employeeUniqueIds[sheetNumber] = generateUniqueId(employeeNames[sheetNumber]);
+                const employeeName = employeeNames[appState.currentTimesheetNumber];
+                if (!employeeName) {
+                    throw new Error('Invalid employee selected');
                 }
                 
-                const employeeId = appState.employeeUniqueIds[sheetNumber];
-                const baseUrl = window.location.href.split('?')[0];
-                const newUrl = `${baseUrl}?id=${employeeId}`;
+                const dataToSave = {
+                    employeeData: appState.allTimesheets[appState.currentTimesheetNumber],
+                    employeeName: employeeName,
+                    uniqueId: appState.uniqueId,
+                    lastSaved: new Date().toISOString(),
+                    version: '2.0'
+                };
                 
-                if (appState.debugMode) {
-                    console.log(`Switching to employee ${sheetNumber} (${employeeNames[sheetNumber]})`);
+                // Enhanced storage with error handling
+                try {
+                    window.timesheetStorage = window.timesheetStorage || {};
+                    const storageKey = `timesheet_${appState.uniqueId}`;
+                    window.timesheetStorage[storageKey] = dataToSave;
+                    
+                    // Also try sessionStorage as backup
+                    if (typeof Storage !== 'undefined') {
+                        sessionStorage.setItem(storageKey, JSON.stringify(dataToSave));
+                    }
+                } catch (storageError) {
+                    console.warn('Storage operation failed:', storageError);
                 }
                 
-                // Use a small delay to ensure UI feedback is visible
-                setTimeout(() => {
-                    window.location.href = newUrl;
-                }, 100);
+                showSuccess(`${employeeName}'s timesheet saved successfully!`);
+                console.log(`Saved ${employeeName}'s timesheet data`);
                 
             } catch (error) {
-                showError('Error switching employee: ' + error.message);
+                showError('Error saving timesheet: ' + error.message);
+            } finally {
                 showLoading(false);
                 disableButtons(false);
             }
         }
 
-        // Enhanced timesheet generation with better error handling
+        // Enhanced PDF generation with better error handling
+        function generatePDF() {
+            try {
+                disableButtons(true);
+                showLoading(true);
+                
+                saveCurrentTimesheetData();
+                
+                if (typeof window.jspdf === 'undefined') {
+                    throw new Error('PDF library not loaded. Please refresh the page and try again.');
+                }
+                
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                const employeeName = employeeNames[appState.currentTimesheetNumber];
+                if (!employeeName) {
+                    throw new Error('Invalid employee selected');
+                }
+                
+                // Enhanced PDF generation with more comprehensive data
+                doc.setFontSize(18);
+                doc.text(`${employeeName} - Timesheet Report`, 20, 20);
+                
+                const hourlyRate = parseFloat(safeGetValue('hourlyRate')) || 0;
+                const overtimeRate = parseFloat(safeGetValue('overtimeRate')) || 1.5;
+                
+                doc.setFontSize(10);
+                doc.text(`Hourly Rate: ${hourlyRate.toFixed(2)}`, 20, 35);
+                doc.text(`Overtime Rate: ${overtimeRate}x`, 80, 35);
+                doc.text(`Generated: ${new Date().toLocaleDateString()}`, 20, 45);
+                
+                if (appState.currentStartDate) {
+                    const endDate = new Date(appState.currentStartDate.getTime() + 13 * 24 * 60 * 60 * 1000);
+                    doc.text(`Period: ${appState.currentStartDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`, 20, 55);
+                }
+                
+                let yPos = 70;
+                
+                // Add summary with null checks
+                doc.setFontSize(14);
+                doc.text('Summary:', 20, yPos);
+                yPos += 15;
+                
+                doc.setFontSize(10);
+                const summaryElements = ['regularHours', 'overtimeHours', 'sickHours', 'vacationHours', 'unpaidHours', 'totalEarnings'];
+                const summaryLabels = ['Regular Hours', 'Overtime Hours', 'Sick Hours', 'Vacation Hours', 'Unpaid Hours', 'Total Earnings'];
+                
+                summaryElements.forEach((elementId, index) => {
+                    const element = safeGetElement(elementId);
+                    const value = element ? element.textContent : '0.00';
+                    const xPos = 20 + (index % 2) * 90;
+                    if (index > 0 && index % 2 === 0) yPos += 10;
+                    doc.text(`${summaryLabels[index]}: ${value}`, xPos, yPos);
+                });
+                
+                yPos += 20;
+                
+                // Add detailed breakdown with validation
+                doc.setFontSize(12);
+                doc.text('Daily Breakdown:', 20, yPos);
+                yPos += 15;
+                
+                doc.setFontSize(8);
+                const headers = ['Date', 'Start', 'Lunch', 'End', 'Regular', 'OT', 'Sick', 'Vacation', 'Unpaid', 'Total'];
+                let xPos = 15;
+                headers.forEach((header, index) => {
+                    doc.text(header, xPos, yPos);
+                    xPos += (index === 0 ? 20 : 18);
+                });
+                yPos += 8;
+                
+                // Add data rows with proper validation
+                const sortedDates = Object.keys(appState.timesheetData).sort();
+                sortedDates.forEach(date => {
+                    if (yPos > 270) {
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    const data = appState.timesheetData[date] || {};
+                    const dateObj = new Date(date);
+                    const formattedDate = isNaN(dateObj.getTime()) ? date : `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+                    
+                    xPos = 15;
+                    const regularCell = safeGetElement(`regular-${date}`);
+                    const overtimeCell = safeGetElement(`overtime-${date}`);
+                    const totalCell = safeGetElement(`total-${date}`);
+                    
+                    const values = [
+                        formattedDate,
+                        data.startTime || '',
+                        `${data.lunchStart || ''}-${data.lunchEnd || ''}`,
+                        data.endTime || '',
+                        regularCell ? regularCell.textContent : '0.00',
+                        overtimeCell ? overtimeCell.textContent : '0.00',
+                        (data.sickHours || 0).toFixed(2),
+                        (data.vacationHours || 0).toFixed(2),
+                        (data.unpaidHours || 0).toFixed(2),
+                        totalCell ? totalCell.textContent : '0.00'
+                    ];
+                    
+                    values.forEach((value, index) => {
+                        doc.text(String(value), xPos, yPos);
+                        xPos += (index === 0 ? 20 : 18);
+                    });
+                    yPos += 6;
+                });
+                
+                doc.save(`${employeeName.toLowerCase().replace(/[^a-z]/g, '')}-timesheet.pdf`);
+                showSuccess('PDF exported successfully!');
+                
+            } catch (error) {
+                showError('Error generating PDF: ' + error.message);
+            } finally {
+                showLoading(false);
+                disableButtons(false);
+            }
+        }
+
+        // Enhanced CSV generation
+        function generateCSV() {
+            try {
+                disableButtons(true);
+                showLoading(true);
+                
+                saveCurrentTimesheetData();
+                
+                const employeeName = employeeNames[appState.currentTimesheetNumber];
+                if (!employeeName) {
+                    throw new Error('Invalid employee selected');
+                }
+                
+                let csvContent = "Date,Start Time,Lunch Start,Lunch End,End Time,Regular Hours,Overtime Hours,Sick Hours,Vacation Hours,Unpaid Hours,Total Hours\n";
+                
+                const sortedDates = Object.keys(appState.timesheetData).sort();
+                sortedDates.forEach(date => {
+                    const data = appState.timesheetData[date] || {};
+                    const regularCell = safeGetElement(`regular-${date}`);
+                    const overtimeCell = safeGetElement(`overtime-${date}`);
+                    const totalCell = safeGetElement(`total-${date}`);
+                    
+                    const regularHours = regularCell ? regularCell.textContent : '0.00';
+                    const overtimeHours = overtimeCell ? overtimeCell.textContent : '0.00';
+                    const totalHours = totalCell ? totalCell.textContent : '0.00';
+                    
+                    const row = [
+                        date,
+                        data.startTime || '',
+                        data.lunchStart || '',
+                        data.lunchEnd || '',
+                        data.endTime || '',
+                        regularHours,
+                        overtimeHours,
+                        (data.sickHours || 0).toFixed(2),
+                        (data.vacationHours || 0).toFixed(2),
+                        (data.unpaidHours || 0).toFixed(2),
+                        totalHours
+                    ].map(field => `"${String(field).replace(/"/g, '""')}"`); // Escape quotes
+                    
+                    csvContent += row.join(',') + '\n';
+                });
+                
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${employeeName.toLowerCase().replace(/[^a-z]/g, '')}-timesheet.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                showSuccess('CSV exported successfully!');
+                
+            } catch (error) {
+                showError('Error generating CSV: ' + error.message);
+            } finally {
+                showLoading(false);
+                disableButtons(false);
+            }
+        }
+
+        // Enhanced data clearing with confirmation
+        function clearAllData() {
+            try {
+                if (!confirm('Are you sure you want to clear all timesheet data? This action cannot be undone.')) {
+                    return;
+                }
+                
+                disableButtons(true);
+                showLoading(true);
+                
+                // Clear the timesheetData object
+                Object.keys(appState.timesheetData).forEach(date => {
+                    appState.timesheetData[date] = {
+                        startTime: '', lunchStart: '', lunchEnd: '', endTime: '',
+                        sickHours: 0, vacationHours: 0, unpaidHours: 0
+                    };
+                });
+                
+                // Clear all input fields with error handling
+                document.querySelectorAll('.time-input').forEach(input => {
+                    input.value = '';
+                    input.classList.remove('error');
+                    input.style.borderColor = '#dee2e6';
+                });
+                
+                document.querySelectorAll('input[type="number"]').forEach(input => {
+                    const field = input.getAttribute('data-field');
+                    if (field && field.includes('Hours')) {
+                        input.value = '';
+                    }
+                });
+                
+                // Close any open hour selectors
+                document.querySelectorAll('.hours-selector.active').forEach(selector => {
+                    selector.classList.remove('active');
+                });
+                
+                calculateTotals();
+                showAutoSaveIndicator();
+                showSuccess('All timesheet data has been cleared.');
+                
+            } catch (error) {
+                showError('Error clearing data: ' + error.message);
+            } finally {
+                showLoading(false);
+                disableButtons(false);
+            }
+        }
+
+        // Enhanced helper functions
+        function saveCurrentTimesheetData() {
+            try {
+                if (appState.allTimesheets[appState.currentTimesheetNumber]) {
+                    appState.allTimesheets[appState.currentTimesheetNumber].data = { ...appState.timesheetData };
+                    appState.allTimesheets[appState.currentTimesheetNumber].hourlyRate = parseFloat(safeGetValue('hourlyRate')) || 0;
+                    appState.allTimesheets[appState.currentTimesheetNumber].overtimeRate = parseFloat(safeGetValue('overtimeRate')) || 1.5;
+                    appState.allTimesheets[appState.currentTimesheetNumber].overtimeThreshold = parseFloat(safeGetValue('overtimeThreshold')) || 40;
+                    appState.allTimesheets[appState.currentTimesheetNumber].startDate = appState.currentStartDate;
+                }
+            } catch (error) {
+                console.error('Error saving current timesheet data:', error);
+            }
+        }
+
+        function updateActiveTab() {
+            try {
+                document.querySelectorAll('.timesheet-tab').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                
+                const activeTab = document.querySelector(`.timesheet-tab[data-sheet="${appState.currentTimesheetNumber}"]`);
+                if (activeTab) {
+                    activeTab.classList.add('active');
+                }
+                
+                const nameElement = safeGetElement('currentTimesheetName');
+                if (nameElement) {
+                    nameElement.textContent = employeeNames[appState.currentTimesheetNumber] || 'Unknown';
+                }
+            } catch (error) {
+                console.error('Error updating active tab:', error);
+            }
+        }
+
+        function clearTimesheet() {
+            try {
+                const tbody = safeGetElement('timesheetBody');
+                if (tbody) {
+                    tbody.innerHTML = '';
+                }
+            } catch (error) {
+                console.error('Error clearing timesheet:', error);
+            }
+        }
+
+        function updateUniqueUrl() {
+            try {
+                const currentUrl = window.location.href.split('?')[0];
+                const employeeName = employeeNames[appState.currentTimesheetNumber];
+                const uniqueUrl = `${currentUrl}?id=${appState.uniqueId}`;
+                
+                const urlInput = safeGetElement('uniqueUrl');
+                const urlDisplay = safeGetElement('urlDisplay');
+                
+                if (urlInput) {
+                    urlInput.value = uniqueUrl;
+                }
+                if (urlDisplay) {
+                    urlDisplay.style.display = 'block';
+                }
+                
+                const headerElement = document.querySelector('.url-display h4');
+                if (headerElement && employeeName) {
+                    headerElement.textContent = `${employeeName}'s Secure Link:`;
+                }
+            } catch (error) {
+                console.error('Error updating unique URL:', error);
+            }
+        }
+
         function generateTimesheet() {
             try {
                 const tbody = safeGetElement('timesheetBody');
@@ -987,10 +1323,6 @@
                 }
                 
                 const startDate = appState.currentStartDate || new Date();
-                
-                if (appState.debugMode) {
-                    console.log('Generating timesheet starting from:', startDate.toDateString());
-                }
                 
                 for (let i = 0; i < 14; i++) {
                     const currentDate = new Date(startDate);
@@ -1005,10 +1337,6 @@
                     }
                     
                     createRow(dateString, currentDate);
-                }
-                
-                if (appState.debugMode) {
-                    console.log('Timesheet generation completed');
                 }
             } catch (error) {
                 showError('Error generating timesheet: ' + error.message);
@@ -1095,31 +1423,139 @@
             }
         }
 
-        // Enhanced earnings calculation with validation
-        function calculateEarnings(regularHours, overtimeHours, sickHours, vacationHours, hourlyRate, overtimeMultiplier) {
-            // Ensure all inputs are valid numbers
-            const validRegular = Math.max(0, parseFloat(regularHours) || 0);
-            const validOvertime = Math.max(0, parseFloat(overtimeHours) || 0);
-            const validSick = Math.max(0, parseFloat(sickHours) || 0);
-            const validVacation = Math.max(0, parseFloat(vacationHours) || 0);
-            const validRate = Math.max(0, parseFloat(hourlyRate) || 0);
-            const validMultiplier = Math.max(1, parseFloat(overtimeMultiplier) || 1.5);
-            
-            const regularPay = validRegular * validRate;
-            const overtimePay = validOvertime * validRate * validMultiplier;
-            const sickPay = validSick * validRate;
-            const vacationPay = validVacation * validRate;
-            
-            return regularPay + overtimePay + sickPay + vacationPay;
+        function handleTimeInputChange(input) {
+            try {
+                const field = input.getAttribute('data-field');
+                const date = input.getAttribute('data-date');
+                const value = input.value;
+                
+                if (field && date && appState.timesheetData[date]) {
+                    appState.timesheetData[date][field] = value;
+                    calculateTotals();
+                    showAutoSaveIndicator();
+                }
+            } catch (error) {
+                console.error('Error handling time input change:', error);
+            }
         }
 
-        // Safe calculation functions with element validation
-        function calculateTotals() {
+        function handleNumberInputChange(input) {
             try {
-                if (appState.debugMode) {
-                    console.log('Calculating totals...');
+                const field = input.getAttribute('data-field');
+                const date = input.getAttribute('data-date');
+                const value = input.value;
+                
+                if (field && date && appState.timesheetData[date]) {
+                    if (field.includes('Hours')) {
+                        appState.timesheetData[date][field] = parseFloat(value) || 0;
+                    } else {
+                        appState.timesheetData[date][field] = value;
+                    }
+                    calculateTotals();
+                    showAutoSaveIndicator();
+                }
+            } catch (error) {
+                console.error('Error handling number input change:', error);
+            }
+        }
+
+        function loadInputData(input, dateString) {
+            try {
+                const field = input.getAttribute('data-field');
+                if (field && appState.timesheetData[dateString]) {
+                    const value = appState.timesheetData[dateString][field];
+                    if (value !== undefined && value !== null) {
+                        input.value = value;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading input data:', error);
+            }
+        }
+
+        // Enhanced time formatting with validation
+        function formatTimeInput(input) {
+            try {
+                let value = input.value.replace(/[^\d:]/g, '');
+                
+                // Auto-format as user types
+                if (value.length === 1 || value.length === 2) {
+                    const hours = parseInt(value);
+                    if (hours > 23) {
+                        value = '23';
+                    }
+                    if (value.length === 2 && !value.includes(':')) {
+                        value = value + ':';
+                    }
+                } else if (value.length === 4 && value.indexOf(':') === 1) {
+                    const parts = value.split(':');
+                    const minutes = parseInt(parts[1]);
+                    if (minutes > 59) {
+                        value = parts[0] + ':59';
+                    }
+                } else if (value.length === 5) {
+                    const parts = value.split(':');
+                    if (parts.length === 2) {
+                        let hours = parseInt(parts[0]) || 0;
+                        let minutes = parseInt(parts[1]) || 0;
+                        
+                        if (hours > 23) hours = 23;
+                        if (minutes > 59) minutes = 59;
+                        
+                        value = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+                    }
                 }
                 
+                input.value = value;
+                
+                // Validate time format
+                const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+                if (value && !timeRegex.test(value)) {
+                    input.classList.add('error');
+                    input.title = 'Please enter a valid time (HH:MM)';
+                } else {
+                    input.classList.remove('error');
+                    input.title = '';
+                }
+            } catch (error) {
+                console.error('Error formatting time input:', error);
+            }
+        }
+
+        // Enhanced calculation functions
+        function timeToMinutes(timeStr) {
+            try {
+                if (!timeStr) return 0;
+                
+                const parts = timeStr.split(':');
+                if (parts.length !== 2) return 0;
+                
+                const hours = parseInt(parts[0]) || 0;
+                const minutes = parseInt(parts[1]) || 0;
+                
+                if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+                    return 0;
+                }
+                
+                return hours * 60 + minutes;
+            } catch (error) {
+                console.error('Error converting time to minutes:', error);
+                return 0;
+            }
+        }
+
+        function minutesToHours(minutes) {
+            try {
+                if (typeof minutes !== 'number' || minutes < 0) return 0;
+                return Math.round((minutes / 60) * 100) / 100;
+            } catch (error) {
+                console.error('Error converting minutes to hours:', error);
+                return 0;
+            }
+        }
+
+        function calculateTotals() {
+            try {
                 let totalRegular = 0;
                 let totalOvertime = 0;
                 let totalSick = 0;
@@ -1176,7 +1612,7 @@
                         const vacationHours = Math.max(0, parseFloat(data.vacationHours) || 0);
                         const unpaidHours = Math.max(0, parseFloat(data.unpaidHours) || 0);
                         
-                        // Update individual day totals with safe element access
+                        // Update individual day totals with null checks
                         const regularCell = safeGetElement(`regular-${date}`);
                         const overtimeCell = safeGetElement(`overtime-${date}`);
                         const totalCell = safeGetElement(`total-${date}`);
@@ -1206,7 +1642,7 @@
                     totalRegular = 40;
                 }
                 
-                // Update summary cards with safe element access
+                // Update summary cards with null checks
                 const summaryUpdates = [
                     ['regularHours', totalRegular.toFixed(2)],
                     ['overtimeHours', totalOvertime.toFixed(2)],
@@ -1222,254 +1658,20 @@
                 
                 // Calculate earnings with validation
                 const hourlyRate = Math.max(0, parseFloat(safeGetValue('hourlyRate')) || 0);
-                const totalEarnings = calculateEarnings(totalRegular, totalOvertime, totalSick, totalVacation, hourlyRate, overtimeRate);
+                const regularPay = totalRegular * hourlyRate;
+                const overtimePay = totalOvertime * hourlyRate * overtimeRate;
+                const sickPay = totalSick * hourlyRate;
+                const vacationPay = totalVacation * hourlyRate;
+                const totalEarnings = regularPay + overtimePay + sickPay + vacationPay;
                 
                 const earningsElement = safeGetElement('totalEarnings');
                 if (earningsElement) {
                     earningsElement.textContent = `${totalEarnings.toFixed(2)}`;
                 }
                 
-                if (appState.debugMode) {
-                    console.log('Totals calculated successfully');
-                }
-                
             } catch (error) {
                 console.error('Error calculating totals:', error);
                 showError('Error calculating totals. Please check your input data.');
-            }
-        }
-
-        // Helper functions with better error handling
-        function timeToMinutes(timeStr) {
-            try {
-                if (!timeStr) return 0;
-                
-                const parts = timeStr.split(':');
-                if (parts.length !== 2) return 0;
-                
-                const hours = parseInt(parts[0]) || 0;
-                const minutes = parseInt(parts[1]) || 0;
-                
-                if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-                    return 0;
-                }
-                
-                return hours * 60 + minutes;
-            } catch (error) {
-                console.error('Error converting time to minutes:', error);
-                return 0;
-            }
-        }
-
-        function minutesToHours(minutes) {
-            try {
-                if (typeof minutes !== 'number' || minutes < 0) return 0;
-                return Math.round((minutes / 60) * 100) / 100;
-            } catch (error) {
-                console.error('Error converting minutes to hours:', error);
-                return 0;
-            }
-        }
-
-        // Event handlers with proper error handling
-        function handleTimeInputChange(input) {
-            try {
-                const field = input.getAttribute('data-field');
-                const date = input.getAttribute('data-date');
-                const value = input.value;
-                
-                if (field && date && appState.timesheetData[date]) {
-                    appState.timesheetData[date][field] = value;
-                    calculateTotals();
-                    showAutoSaveIndicator();
-                }
-            } catch (error) {
-                console.error('Error handling time input change:', error);
-            }
-        }
-
-        function handleNumberInputChange(input) {
-            try {
-                const field = input.getAttribute('data-field');
-                const date = input.getAttribute('data-date');
-                const value = input.value;
-                
-                if (field && date && appState.timesheetData[date]) {
-                    if (field.includes('Hours')) {
-                        appState.timesheetData[date][field] = parseFloat(value) || 0;
-                    } else {
-                        appState.timesheetData[date][field] = value;
-                    }
-                    calculateTotals();
-                    showAutoSaveIndicator();
-                }
-            } catch (error) {
-                console.error('Error handling number input change:', error);
-            }
-        }
-
-        function loadInputData(input, dateString) {
-            try {
-                const field = input.getAttribute('data-field');
-                if (field && appState.timesheetData[dateString]) {
-                    const value = appState.timesheetData[dateString][field];
-                    if (value !== undefined && value !== null) {
-                        input.value = value;
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading input data:', error);
-            }
-        }
-
-        function formatTimeInput(input) {
-            try {
-                let value = input.value.replace(/[^\d:]/g, '');
-                
-                // Auto-format as user types
-                if (value.length === 1 || value.length === 2) {
-                    const hours = parseInt(value);
-                    if (hours > 23) {
-                        value = '23';
-                    }
-                    if (value.length === 2 && !value.includes(':')) {
-                        value = value + ':';
-                    }
-                } else if (value.length === 4 && value.indexOf(':') === 1) {
-                    const parts = value.split(':');
-                    const minutes = parseInt(parts[1]);
-                    if (minutes > 59) {
-                        value = parts[0] + ':59';
-                    }
-                } else if (value.length === 5) {
-                    const parts = value.split(':');
-                    if (parts.length === 2) {
-                        let hours = parseInt(parts[0]) || 0;
-                        let minutes = parseInt(parts[1]) || 0;
-                        
-                        if (hours > 23) hours = 23;
-                        if (minutes > 59) minutes = 59;
-                        
-                        value = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
-                    }
-                }
-                
-                input.value = value;
-                
-                // Validate time format
-                const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
-                if (value && !timeRegex.test(value)) {
-                    input.classList.add('error');
-                    input.title = 'Please enter a valid time (HH:MM)';
-                } else {
-                    input.classList.remove('error');
-                    input.title = '';
-                }
-            } catch (error) {
-                console.error('Error formatting time input:', error);
-            }
-        }
-
-        // Additional helper functions
-        function toggleHoursSelector(button, date, type) {
-            try {
-                if (!button || !date || !type) {
-                    throw new Error('Invalid parameters for hours selector');
-                }
-                
-                const selector = safeGetElement(`${type}-${date}`);
-                if (!selector) {
-                    console.warn(`Hours selector not found: ${type}-${date}`);
-                    return;
-                }
-                
-                const isActive = selector.classList.contains('active');
-                
-                // Close all other selectors
-                document.querySelectorAll('.hours-selector.active').forEach(sel => {
-                    if (sel !== selector) {
-                        sel.classList.remove('active');
-                    }
-                });
-                
-                // Toggle current selector
-                if (isActive) {
-                    selector.classList.remove('active');
-                } else {
-                    selector.classList.add('active');
-                }
-            } catch (error) {
-                showError('Error toggling hours selector: ' + error.message);
-            }
-        }
-
-        function saveCurrentTimesheetData() {
-            try {
-                if (appState.allTimesheets[appState.currentTimesheetNumber]) {
-                    appState.allTimesheets[appState.currentTimesheetNumber].data = { ...appState.timesheetData };
-                    appState.allTimesheets[appState.currentTimesheetNumber].hourlyRate = parseFloat(safeGetValue('hourlyRate')) || 0;
-                    appState.allTimesheets[appState.currentTimesheetNumber].overtimeRate = parseFloat(safeGetValue('overtimeRate')) || 1.5;
-                    appState.allTimesheets[appState.currentTimesheetNumber].overtimeThreshold = parseFloat(safeGetValue('overtimeThreshold')) || 40;
-                    appState.allTimesheets[appState.currentTimesheetNumber].startDate = appState.currentStartDate;
-                }
-            } catch (error) {
-                console.error('Error saving current timesheet data:', error);
-            }
-        }
-
-        function updateActiveTab() {
-            try {
-                document.querySelectorAll('.timesheet-tab').forEach(tab => {
-                    tab.classList.remove('active');
-                });
-                
-                const activeTab = document.querySelector(`.timesheet-tab[data-sheet="${appState.currentTimesheetNumber}"]`);
-                if (activeTab) {
-                    activeTab.classList.add('active');
-                }
-                
-                const nameElement = safeGetElement('currentTimesheetName');
-                if (nameElement) {
-                    nameElement.textContent = employeeNames[appState.currentTimesheetNumber] || 'Unknown';
-                }
-            } catch (error) {
-                console.error('Error updating active tab:', error);
-            }
-        }
-
-        function clearTimesheet() {
-            try {
-                const tbody = safeGetElement('timesheetBody');
-                if (tbody) {
-                    tbody.innerHTML = '';
-                }
-            } catch (error) {
-                console.error('Error clearing timesheet:', error);
-            }
-        }
-
-        function updateUniqueUrl() {
-            try {
-                const currentUrl = window.location.href.split('?')[0];
-                const employeeName = employeeNames[appState.currentTimesheetNumber];
-                const uniqueUrl = `${currentUrl}?id=${appState.uniqueId}`;
-                
-                const urlInput = safeGetElement('uniqueUrl');
-                const urlDisplay = safeGetElement('urlDisplay');
-                
-                if (urlInput) {
-                    urlInput.value = uniqueUrl;
-                }
-                if (urlDisplay) {
-                    urlDisplay.style.display = 'block';
-                }
-                
-                const headerElement = document.querySelector('.url-display h4');
-                if (headerElement && employeeName) {
-                    headerElement.textContent = `${employeeName}'s Secure Link:`;
-                }
-            } catch (error) {
-                console.error('Error updating unique URL:', error);
             }
         }
 
@@ -1488,13 +1690,9 @@
             }
         }
 
-        // Data loading and saving functions
+        // Enhanced data loading with comprehensive error handling
         function loadData(id) {
             try {
-                if (appState.debugMode) {
-                    console.log('Loading data for ID:', id);
-                }
-                
                 showLoading(true);
                 
                 const employeeNum = findEmployeeByUniqueId(id);
@@ -1508,9 +1706,26 @@
                     throw new Error('Failed to initialize timesheets');
                 }
                 
-                // Try to load saved data
+                // Try to load saved data with multiple fallback methods
                 const storageKey = `timesheet_${id}`;
-                const savedData = safeGetFromStorage(storageKey);
+                let savedData = null;
+                
+                // Try memory storage first
+                if (window.timesheetStorage && window.timesheetStorage[storageKey]) {
+                    savedData = window.timesheetStorage[storageKey];
+                }
+                
+                // Try sessionStorage as fallback
+                if (!savedData && typeof Storage !== 'undefined') {
+                    try {
+                        const sessionData = sessionStorage.getItem(storageKey);
+                        if (sessionData) {
+                            savedData = JSON.parse(sessionData);
+                        }
+                    } catch (parseError) {
+                        console.warn('Failed to parse session storage data:', parseError);
+                    }
+                }
                 
                 if (savedData && savedData.employeeData) {
                     appState.allTimesheets[appState.currentTimesheetNumber] = savedData.employeeData;
@@ -1520,18 +1735,12 @@
                     safeSetValue('overtimeRate', savedData.employeeData.overtimeRate || 1.5);
                     safeSetValue('overtimeThreshold', savedData.employeeData.overtimeThreshold || 40);
                     
-                    if (appState.debugMode) {
-                        console.log('Loaded saved data for', employeeNames[employeeNum]);
-                    }
+                    console.log('Loaded saved data for', employeeNames[employeeNum]);
                 } else {
-                    if (appState.debugMode) {
-                        console.log('No saved data found, using defaults for', employeeNames[employeeNum]);
-                    }
+                    console.log('No saved data found, using defaults for', employeeNames[employeeNum]);
                 }
                 
                 appState.timesheetData = appState.allTimesheets[appState.currentTimesheetNumber].data;
-                
-                // Generate timesheet BEFORE calculating totals
                 generateTimesheet();
                 calculateTotals();
                 
@@ -1543,189 +1752,6 @@
             }
         }
 
-        function saveData() {
-            try {
-                disableButtons(true);
-                showLoading(true);
-                
-                if (!appState.isInitialized) {
-                    throw new Error('Application not properly initialized');
-                }
-                
-                saveCurrentTimesheetData();
-                
-                const employeeName = employeeNames[appState.currentTimesheetNumber];
-                if (!employeeName) {
-                    throw new Error('Invalid employee selected');
-                }
-                
-                const dataToSave = {
-                    employeeData: appState.allTimesheets[appState.currentTimesheetNumber],
-                    employeeName: employeeName,
-                    uniqueId: appState.uniqueId,
-                    lastSaved: new Date().toISOString(),
-                    version: '2.0'
-                };
-                
-                const storageKey = `timesheet_${appState.uniqueId}`;
-                safeSetToStorage(storageKey, dataToSave);
-                
-                showSuccess(`${employeeName}'s timesheet saved successfully!`);
-                console.log(`Saved ${employeeName}'s timesheet data`);
-                
-            } catch (error) {
-                showError('Error saving timesheet: ' + error.message);
-            } finally {
-                showLoading(false);
-                disableButtons(false);
-            }
-        }
-
-        // PDF and CSV generation functions (simplified for brevity)
-        function generatePDF() {
-            try {
-                disableButtons(true);
-                showLoading(true);
-                
-                saveCurrentTimesheetData();
-                
-                if (typeof window.jspdf === 'undefined') {
-                    throw new Error('PDF library not loaded. Please refresh the page and try again.');
-                }
-                
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
-                
-                const employeeName = employeeNames[appState.currentTimesheetNumber];
-                if (!employeeName) {
-                    throw new Error('Invalid employee selected');
-                }
-                
-                doc.setFontSize(18);
-                doc.text(`${employeeName} - Timesheet Report`, 20, 20);
-                
-                doc.save(`${employeeName.toLowerCase().replace(/[^a-z]/g, '')}-timesheet.pdf`);
-                showSuccess('PDF exported successfully!');
-                
-            } catch (error) {
-                showError('Error generating PDF: ' + error.message);
-            } finally {
-                showLoading(false);
-                disableButtons(false);
-            }
-        }
-
-        function generateCSV() {
-            try {
-                disableButtons(true);
-                showLoading(true);
-                
-                saveCurrentTimesheetData();
-                
-                const employeeName = employeeNames[appState.currentTimesheetNumber];
-                if (!employeeName) {
-                    throw new Error('Invalid employee selected');
-                }
-                
-                let csvContent = "Date,Start Time,Lunch Start,Lunch End,End Time,Regular Hours,Overtime Hours,Sick Hours,Vacation Hours,Unpaid Hours,Total Hours\n";
-                
-                const sortedDates = Object.keys(appState.timesheetData).sort();
-                sortedDates.forEach(date => {
-                    const data = appState.timesheetData[date] || {};
-                    const regularCell = safeGetElement(`regular-${date}`);
-                    const overtimeCell = safeGetElement(`overtime-${date}`);
-                    const totalCell = safeGetElement(`total-${date}`);
-                    
-                    const regularHours = regularCell ? regularCell.textContent : '0.00';
-                    const overtimeHours = overtimeCell ? overtimeCell.textContent : '0.00';
-                    const totalHours = totalCell ? totalCell.textContent : '0.00';
-                    
-                    const row = [
-                        date,
-                        data.startTime || '',
-                        data.lunchStart || '',
-                        data.lunchEnd || '',
-                        data.endTime || '',
-                        regularHours,
-                        overtimeHours,
-                        (data.sickHours || 0).toFixed(2),
-                        (data.vacationHours || 0).toFixed(2),
-                        (data.unpaidHours || 0).toFixed(2),
-                        totalHours
-                    ].map(field => `"${String(field).replace(/"/g, '""')}"`);
-                    
-                    csvContent += row.join(',') + '\n';
-                });
-                
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${employeeName.toLowerCase().replace(/[^a-z]/g, '')}-timesheet.csv`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                
-                showSuccess('CSV exported successfully!');
-                
-            } catch (error) {
-                showError('Error generating CSV: ' + error.message);
-            } finally {
-                showLoading(false);
-                disableButtons(false);
-            }
-        }
-
-        function clearAllData() {
-            try {
-                if (!confirm('Are you sure you want to clear all timesheet data? This action cannot be undone.')) {
-                    return;
-                }
-                
-                disableButtons(true);
-                showLoading(true);
-                
-                // Clear the timesheetData object
-                Object.keys(appState.timesheetData).forEach(date => {
-                    appState.timesheetData[date] = {
-                        startTime: '', lunchStart: '', lunchEnd: '', endTime: '',
-                        sickHours: 0, vacationHours: 0, unpaidHours: 0
-                    };
-                });
-                
-                // Clear all input fields with error handling
-                document.querySelectorAll('.time-input').forEach(input => {
-                    input.value = '';
-                    input.classList.remove('error');
-                    input.style.borderColor = '#dee2e6';
-                });
-                
-                document.querySelectorAll('input[type="number"]').forEach(input => {
-                    const field = input.getAttribute('data-field');
-                    if (field && field.includes('Hours')) {
-                        input.value = '';
-                    }
-                });
-                
-                // Close any open hour selectors
-                document.querySelectorAll('.hours-selector.active').forEach(selector => {
-                    selector.classList.remove('active');
-                });
-                
-                calculateTotals();
-                showAutoSaveIndicator();
-                showSuccess('All timesheet data has been cleared.');
-                
-            } catch (error) {
-                showError('Error clearing data: ' + error.message);
-            } finally {
-                showLoading(false);
-                disableButtons(false);
-            }
-        }
-
-        // Enhanced initialization functions
         function redirectToEmployeeTimesheet(employeeNum) {
             try {
                 if (employeeNum < 1 || employeeNum > 7) {
@@ -1748,12 +1774,9 @@
             }
         }
 
+        // Enhanced initialization with comprehensive validation
         function initializeTimesheet() {
             try {
-                if (appState.debugMode) {
-                    console.log('Starting timesheet initialization...');
-                }
-                
                 showLoading(true);
                 
                 const urlParams = new URLSearchParams(window.location.search);
@@ -1762,14 +1785,10 @@
                 
                 // Validate sheet number
                 if (sheetNum < 1 || sheetNum > 7) {
-                    console.warn('Invalid sheet number in URL, using default');
+                    throw new Error('Invalid sheet number in URL');
                 }
                 
                 if (id) {
-                    if (appState.debugMode) {
-                        console.log('Initializing with ID from URL:', id);
-                    }
-                    
                     // Initialize with ID from URL
                     const foundEmployee = findEmployeeByUniqueId(id);
                     if (foundEmployee) {
@@ -1786,12 +1805,8 @@
                         return;
                     }
                 } else {
-                    if (appState.debugMode) {
-                        console.log('Initializing without ID, using sheet number:', sheetNum);
-                    }
-                    
                     // Initialize without ID
-                    appState.currentTimesheetNumber = Math.max(1, Math.min(7, sheetNum));
+                    appState.currentTimesheetNumber = sheetNum;
                     if (!initializeAllTimesheets()) {
                         throw new Error('Failed to initialize timesheets');
                     }
@@ -1804,10 +1819,7 @@
                 updateUniqueUrl();
                 
                 appState.isInitialized = true;
-                
-                if (appState.debugMode) {
-                    console.log('Timesheet application initialized successfully');
-                }
+                console.log('Timesheet application initialized successfully');
                 
             } catch (error) {
                 showError('Failed to initialize timesheet: ' + error.message);
@@ -1819,10 +1831,6 @@
 
         function initializeEventListeners() {
             try {
-                if (appState.debugMode) {
-                    console.log('Initializing event listeners...');
-                }
-                
                 // Settings event listeners with error handling
                 const settingsInputs = [
                     { id: 'hourlyRate', handler: calculateTotals },
@@ -1872,9 +1880,7 @@
                     }
                 });
                 
-                if (appState.debugMode) {
-                    console.log('Event listeners initialized successfully');
-                }
+                console.log('Event listeners initialized successfully');
                 
             } catch (error) {
                 console.error('Error initializing event listeners:', error);
@@ -1884,9 +1890,8 @@
         function handleTimeFormatChange() {
             try {
                 const format = safeGetValue('timeFormat');
-                if (appState.debugMode) {
-                    console.log('Time format changed to:', format);
-                }
+                console.log('Time format changed to:', format);
+                // Could implement time format conversion here if needed
                 calculateTotals();
             } catch (error) {
                 console.error('Error handling time format change:', error);
@@ -1896,21 +1901,52 @@
         function handleRoundingRuleChange() {
             try {
                 const rounding = safeGetValue('roundingRule');
-                if (appState.debugMode) {
-                    console.log('Rounding rule changed to:', rounding);
-                }
+                console.log('Rounding rule changed to:', rounding);
+                // Could implement time rounding here if needed
                 calculateTotals();
             } catch (error) {
                 console.error('Error handling rounding rule change:', error);
             }
         }
 
-        // Enhanced initialization with retry mechanism
+        // Enhanced error recovery functions
+        function recoverFromError() {
+            try {
+                console.log('Attempting error recovery...');
+                
+                // Reset application state
+                appState.isInitialized = false;
+                
+                // Clear any loading indicators
+                showLoading(false);
+                disableButtons(false);
+                
+                // Try to reinitialize
+                setTimeout(() => {
+                    initializeTimesheet();
+                }, 1000);
+                
+            } catch (recoveryError) {
+                console.error('Error recovery failed:', recoveryError);
+                showError('Application error. Please refresh the page.');
+            }
+        }
+
+        // Global error handler
+        window.addEventListener('error', function(e) {
+            console.error('Global error caught:', e.error);
+            showError('An unexpected error occurred. Some features may not work properly.');
+        });
+
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('Unhandled promise rejection:', e.reason);
+            showError('An unexpected error occurred. Please try again.');
+        });
+
+        // Enhanced page load initialization with retry mechanism
         function initializeWithRetry(maxAttempts = 3, currentAttempt = 1) {
             try {
-                if (appState.debugMode) {
-                    console.log(`Initialization attempt ${currentAttempt}/${maxAttempts}`);
-                }
+                console.log(`Initialization attempt ${currentAttempt}/${maxAttempts}`);
                 
                 // Check if required elements exist
                 const requiredElements = ['timesheetBody', 'hourlyRate', 'currentTimesheetName'];
@@ -1923,9 +1959,7 @@
                 initializeTimesheet();
                 initializeEventListeners();
                 
-                if (appState.debugMode) {
-                    console.log('Timesheet application initialized successfully');
-                }
+                console.log('Timesheet application initialized successfully');
                 
             } catch (error) {
                 console.error(`Initialization attempt ${currentAttempt} failed:`, error);
@@ -1940,91 +1974,6 @@
                     console.error('All initialization attempts failed');
                 }
             }
-        }
-
-        // Global error handlers
-        window.addEventListener('error', function(e) {
-            console.error('Global error caught:', e.error);
-            if (appState.debugMode) {
-                showError('An unexpected error occurred. Check console for details.');
-            }
-        });
-
-        window.addEventListener('unhandledrejection', function(e) {
-            console.error('Unhandled promise rejection:', e.reason);
-            if (appState.debugMode) {
-                showError('An unexpected error occurred. Check console for details.');
-            }
-        });
-
-        // Helper functions for getting employee links
-        function getAllEmployeeLinks() {
-            const baseUrl = window.location.href.split('?')[0];
-            const employeeLinks = {};
-            
-            // Ensure all employees have unique IDs
-            for (let i = 1; i <= 7; i++) {
-                if (!appState.employeeUniqueIds[i]) {
-                    appState.employeeUniqueIds[i] = generateUniqueId(employeeNames[i]);
-                }
-                
-                const employeeName = employeeNames[i];
-                const uniqueId = appState.employeeUniqueIds[i];
-                const employeeUrl = `${baseUrl}?id=${uniqueId}`;
-                
-                employeeLinks[employeeName] = {
-                    name: employeeName,
-                    uniqueId: uniqueId,
-                    url: employeeUrl
-                };
-            }
-            
-            return employeeLinks;
-        }
-
-        function displayAllEmployeeLinks() {
-            const links = getAllEmployeeLinks();
-            console.log('=== EMPLOYEE TIMESHEET LINKS ===');
-            
-            Object.values(links).forEach(employee => {
-                console.log(`${employee.name}: ${employee.url}`);
-            });
-            
-            // Also return formatted text for easy copying
-            const linksList = Object.values(links)
-                .map(emp => `${emp.name}: ${emp.url}`)
-                .join('\n');
-            
-            // Try to copy to clipboard if possible
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(linksList).then(() => {
-                    console.log('Links copied to clipboard!');
-                    showSuccess('All employee links copied to clipboard!');
-                }).catch(() => {
-                    console.log('Could not copy to clipboard automatically');
-                });
-            }
-            
-            return linksList;
-        }
-
-        function exportEmployeeLinks() {
-            const links = getAllEmployeeLinks();
-            const linksList = Object.values(links)
-                .map(emp => `${emp.name}: ${emp.url}`)
-                .join('\n');
-            
-            const blob = new Blob([linksList], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'employee-timesheet-links.txt';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-            
-            showSuccess('Employee links exported to file!');
         }
 
         // Initialize when DOM is ready with enhanced error handling
@@ -2045,54 +1994,27 @@
             }
         });
 
-        // Expose functions globally for debugging and admin use
+        // Expose some functions globally for debugging
         window.timesheetDebug = {
             appState: appState,
             reinitialize: () => initializeWithRetry(),
-            getAllLinks: getAllEmployeeLinks,
-            displayLinks: displayAllEmployeeLinks,
-            exportLinks: exportEmployeeLinks,
             clearStorage: () => {
                 window.timesheetStorage = {};
-                try {
-                    if (typeof Storage !== 'undefined' && window.location.protocol !== 'file:') {
-                        Object.keys(sessionStorage).forEach(key => {
-                            if (key.startsWith('timesheet_')) {
-                                sessionStorage.removeItem(key);
-                            }
-                        });
-                    }
-                } catch (error) {
-                    console.warn('Could not clear session storage:', error);
+                if (typeof Storage !== 'undefined') {
+                    Object.keys(sessionStorage).forEach(key => {
+                        if (key.startsWith('timesheet_')) {
+                            sessionStorage.removeItem(key);
+                        }
+                    });
                 }
                 showSuccess('Storage cleared');
             },
             exportState: () => {
                 console.log('Current application state:', JSON.stringify(appState, null, 2));
                 return appState;
-            },
-            enableDebug: () => {
-                appState.debugMode = true;
-                console.log('Debug mode enabled');
-            },
-            disableDebug: () => {
-                appState.debugMode = false;
-                console.log('Debug mode disabled');
             }
         };
-
-        // Make functions available globally for HTML onclick handlers
-        window.switchTimesheet = switchTimesheet;
-        window.setCurrentWeek = setCurrentWeek;
-        window.setNextWeek = setNextWeek;
-        window.regenerateTimesheet = regenerateTimesheet;
-        window.toggleHoursSelector = toggleHoursSelector;
-        window.saveData = saveData;
-        window.generatePDF = generatePDF;
-        window.generateCSV = generateCSV;
-        window.clearAllData = clearAllData;
-        window.displayAllEmployeeLinks = displayAllEmployeeLinks;
-        window.exportEmployeeLinks = exportEmployeeLinks;
     </script>
 </body>
 </html>
+                        
